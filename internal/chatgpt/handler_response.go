@@ -273,10 +273,13 @@ func HandlerDetailedWithOptions(c *gin.Context, response *http.Response, client 
 		emitSentinels(materializeArtifactEvents(client, account, convId, artifactState.Finalize(), artifactConfig))
 	}
 	finalText := func() string {
+		var text string
 		if usedChunkEvents {
-			return visibleText.String()
+			text = visibleText.String()
+		} else {
+			text = sseparser.ReplaceCiteMarkers(previous_text.Text, patchState.CiteAlts)
 		}
-		return sseparser.ReplaceCiteMarkers(previous_text.Text, patchState.CiteAlts)
+		return sseparser.RenderDILMarkdown(text)
 	}
 	flushCites := func() {
 		flushed := citePipeline.Flush(patchState.CiteAlts)
@@ -374,6 +377,10 @@ readLoop:
 				if activeChannel == "analysis" {
 					emitThinking(streamEvent.text)
 					if streamEvent.isStop {
+						if !streamOutput {
+							currentEvent = ""
+							continue
+						}
 						if streamOutput {
 							finalLine := official_types.StopChunkWithConversation(finish_reason, model, convId)
 							c.Writer.WriteString("data: " + finalLine.String() + "\n\n")
@@ -455,6 +462,10 @@ readLoop:
 				}
 				if streamEvent.isStop {
 					flushCites()
+					if !streamOutput {
+						currentEvent = ""
+						continue
+					}
 					if terminalChunk != nil {
 						c.Writer.WriteString("data: " + terminalChunk.String() + "\n\n")
 						c.Writer.Flush()
@@ -643,6 +654,10 @@ readLoop:
 					finish_reason = "stop"
 				}
 				flushCites()
+				if !streamOutput {
+					currentEvent = ""
+					continue
+				}
 				if streamOutput {
 					final_line := official_types.StopChunkWithConversation(finish_reason, model, convId)
 					c.Writer.WriteString("data: " + final_line.String() + "\n\n")
@@ -681,6 +696,7 @@ readLoop:
 			SandboxArtifacts:  artifactState.SandboxArtifacts,
 			PDFArtifacts:      artifactState.PDFArtifacts,
 			GeneratedImageIDs: artifactState.ImageFileIDs,
+			StopSent:          usedChunkEvents && isEnd,
 		}
 	}
 	finalizeArtifacts()
@@ -694,6 +710,7 @@ readLoop:
 		SandboxArtifacts:  artifactState.SandboxArtifacts,
 		PDFArtifacts:      artifactState.PDFArtifacts,
 		GeneratedImageIDs: artifactState.ImageFileIDs,
+		StopSent:          usedChunkEvents && isEnd,
 		Continue: &ContinueInfo{
 			ConversationID: original_response.ConversationID,
 			ParentID:       original_response.Message.ID,

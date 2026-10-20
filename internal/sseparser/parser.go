@@ -638,6 +638,9 @@ func markerFallback(marker string) string {
 		return ""
 	}
 	inner := string(runes[1 : len(runes)-1]) // 去掉首尾控制符(按 rune,PUA 是多字节)
+	if link := markerLinkFallback(inner); link != "" {
+		return link
+	}
 	if !strings.HasPrefix(inner, "entity") {
 		return ""
 	}
